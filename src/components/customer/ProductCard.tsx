@@ -1,6 +1,6 @@
 import { Link, useLocation as useRouterLocation } from "react-router-dom";
-import { Heart, Star, ShoppingBag, Eye } from "lucide-react";
-import { useState } from "react";
+import { Heart, Star, ShoppingBag, Eye, Check, MapPin, Truck } from "lucide-react";
+import { useState, useEffect } from "react";
 import { Product, suppliers } from "@/lib/data";
 import { MarketplaceProduct } from "@/hooks/useMarketplaceProducts";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { useLocation } from "@/context/LocationContext";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ProductCardProps {
   product: Product | MarketplaceProduct;
@@ -29,10 +30,36 @@ const ProductCard = ({ product }: ProductCardProps) => {
   
   const [isAddingToCart, setIsAddingToCart] = useState(false);
   const [isImageLoaded, setIsImageLoaded] = useState(false);
+  const [businessName, setBusinessName] = useState<string | null>(null);
 
   const { addToCart } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
   const { address: userAddress } = useLocation();
+
+  // Fetch business name for marketplace products
+  useEffect(() => {
+    const fetchBusinessName = async () => {
+      if (isMarketplaceProduct) {
+        const marketplaceProduct = product as MarketplaceProduct;
+        const { data, error } = await supabase
+          .from("suppliers")
+          .select("business_name")
+          .eq("id", marketplaceProduct.supplier_id)
+          .single();
+        
+        if (data?.business_name) {
+          setBusinessName(data.business_name);
+        }
+      }
+    };
+    
+    fetchBusinessName();
+  }, [isMarketplaceProduct, product]);
+
+  // Get supplier for static products
+  const staticSupplier = !isMarketplaceProduct 
+    ? suppliers.find(s => s.id === (product as Product).supplierId) 
+    : null;
 
   // Location-based availability logic (only for static products)
   let canAddToCart = true;
@@ -197,7 +224,7 @@ const ProductCard = ({ product }: ProductCardProps) => {
             {product.name}
           </h3>
           <p className="text-sm text-muted-foreground line-clamp-1">
-            {isMarketplaceProduct ? "Artisan Seller" : "Local Artisan"}
+            {businessName || staticSupplier?.name || (isMarketplaceProduct ? "Artisan Seller" : "Local Artisan")}
           </p>
           
           {/* Rating */}
@@ -212,15 +239,26 @@ const ProductCard = ({ product }: ProductCardProps) => {
           {/* Availability info */}
           <div className="flex flex-col gap-1">
             {isMarketplaceProduct ? (
-              <span className="text-xs text-muted-foreground">Region: N/A</span>
+              <>
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Check className="h-3 w-3" />
+                  {(product as MarketplaceProduct).available_everywhere ? "Available everywhere" : <><MapPin className="h-3 w-3" /> Region: {(product as MarketplaceProduct).delivery_location || 'N/A'}</>}
+                </span>
+                {!(product as MarketplaceProduct).available_everywhere && (product as MarketplaceProduct).delivery_radius_km && (
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Truck className="h-3 w-3" /> Delivery: {(product as MarketplaceProduct).delivery_radius_km} km
+                  </span>
+                )}
+              </>
             ) : (
               <>
-                <span className="text-xs text-muted-foreground">
-                  {(product as Product).availableEverywhere ? "✓ Available everywhere" : `📍 Region: ${(product as Product).region || 'N/A'}`}
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Check className="h-3 w-3" />
+                  {(product as Product).availableEverywhere ? "Available everywhere" : <><MapPin className="h-3 w-3" /> Region: {(product as Product).region || 'N/A'}</>}
                 </span>
                 {!(product as Product).availableEverywhere && (product as Product).deliveryRadiusKm && (
-                  <span className="text-xs text-muted-foreground">
-                    🚚 Delivery: {(product as Product).deliveryRadiusKm} km
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Truck className="h-3 w-3" /> Delivery: {(product as Product).deliveryRadiusKm} km
                   </span>
                 )}
               </>
